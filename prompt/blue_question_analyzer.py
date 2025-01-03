@@ -1,3 +1,4 @@
+
 class QuestionAnalyzer:
     def __init__(self, subject, user):
         self.prompt = \
@@ -14,12 +15,15 @@ r'''
 다음과 같은 형식의 질문은 제외합니다.
 - "네?", "예?", "그렇죠?", "맞죠?", "그쵸?", "아니죠?", "아닌가요?", "뭐죠?"
 
+# **입력 포맷**
+주변 문맥:
+{context}
+발화:
+{text}
+
 ## 출력 형식
-```json
-[
-    {{
-        "idx": [List]
-    }}
-]
+결과는 'True' 또는 'False'로만 답변하세요.
+
 '''
         self.prompt = self.prompt.replace("{subject}", subject).replace("{user}", user)
+
