@@ -149,7 +149,7 @@ def get_question_context(data, target_indices, range_size=5):
 def get_question_context_v2(data, target_indices, range_size=5):
     grouped_result = []
     for idx in target_indices:
-        question = data[idx]['teacher_text']
+        question = data[idx]['student_text']
         start_idx = max(0, idx - range_size)
         end_idx = min(len(data), idx + range_size + 1)
         contexts = data[start_idx:end_idx]
