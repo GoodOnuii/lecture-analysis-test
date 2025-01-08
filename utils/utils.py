@@ -161,26 +161,43 @@ def extract_question_indices(data):
         all_indices.extend(parsed_json[0]["idx"])
     return sorted(set(all_indices))
 
-def get_question_context(data, target_indices, range_size=5):
-    grouped_result = []
-    try:
-        for idx in target_indices:
-            question = data[idx]['text']
-            start_idx = max(0, idx - range_size)
-            end_idx = min(len(data), idx + range_size + 1)
-            contexts = data[start_idx:end_idx]
-            context = ' '.join([item['text'] for item in contexts])
-            grouped_result.append({'idx': idx, 'question': question, 'context': context})
-        return grouped_result
-    except:
-        print(idx)
-
-def get_question_context_v2(df, question_indices, speaker, range_size):
+def get_question_context_v1(df, question_indices, speaker, range_size):
     
     target_indices = df[df[f'{speaker}_idx'].isin(question_indices)].index.tolist()
     data = df.to_dict(orient='records')
     grouped_result = []
     for idx in target_indices:
+        question = data[idx][f'{speaker}_text']
+        start_idx = max(0, idx - range_size)
+        end_idx = min(len(data), idx + range_size + 1)
+        contexts = data[start_idx:end_idx]
+        
+        context = []
+        for item in contexts:
+            if item['teacher_idx'] != None:
+                context.append({'time': item['time'], 'teacher_text': item['teacher_text']})
+            else:
+                context.append({'time': item['time'], 'student_text': item['student_text']})
+        
+        grouped_result.append({'idx': idx, 'question': question, 'context': context})
+    return grouped_result
+
+def extract_True_indices(results):
+    
+   # True인 항목의 인덱스만 리스트로 반환
+    indices = []
+    for res in results:
+        # 결과값을 소문자로 변환하여 비교 (대소문자 구분 없이)
+        if res['result'].lower() == 'true':
+            indices.append(res['idx'])
+    return indices
+
+def get_question_context_v2(df, learning_question_indices, speaker, range_size):
+    
+    #target_indices = df[df[f'{speaker}_idx'].isin(question_indices)].index.tolist()
+    data = df.to_dict(orient='records')
+    grouped_result = []
+    for idx in learning_question_indices:
         question = data[idx][f'{speaker}_text']
         start_idx = max(0, idx - range_size)
         end_idx = min(len(data), idx + range_size + 1)

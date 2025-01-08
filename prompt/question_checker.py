@@ -1,4 +1,4 @@
-class QuestionAnalyzer:
+class QuestionChecker:
     def __init__(self, subject, user):
         self.prompt = \
 r'''
