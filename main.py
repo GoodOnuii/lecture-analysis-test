@@ -12,6 +12,7 @@ import importlib
 from utils import utils
 from prompt import question_checker, question_classifier, teacher_digging, student_concretizing
 import time 
+import asyncio
 
 def setup_llm():
     load_dotenv()
@@ -54,72 +55,6 @@ def create_dataframe(raw_data):
     
     return df
 
-def question_check(chunks_with_overlap, subject, user, LLM):
-    system_prompt = question_checker.QuestionChecker(subject=subject, user=user).prompt
-    prompt = ChatPromptTemplate.from_messages([
-        ('system', system_prompt),
-        ('user', "{user_message}")
-    ])
-    chain = prompt | LLM | StrOutputParser()
-    
-    results = chain.batch([{"user_message": chunk} for chunk in chunks_with_overlap])
-    return utils.extract_question_indices(results)
-
-def learning_question_check(question_context, subject, user, LLM):
-    system_prompt = question_classifier.QuestionClassifier(subject=subject, user=user).prompt
-    prompt = ChatPromptTemplate.from_messages([
-        ('system', system_prompt),
-        ('user', "{user_message}")
-    ])
-    chain = prompt | LLM | JsonOutputParser()
-    
-    results = chain.batch([{"user_message": chunk} for chunk in question_context])
-    return utils.extract_True_indices(results)
-
-def analyze_teacher_questions(df, chunks_with_overlap, subject, LLM):
-    # Initial question check
-    question_indices = question_check(chunks_with_overlap, subject, '선생님', LLM)
-    question_context = utils.get_question_context_v1(df, question_indices, 'teacher', 5)
-    
-    # Learning question check
-    learning_indices = learning_question_check(question_context, subject, '선생님', LLM)
-    learning_context = utils.get_question_context_v2(df, learning_indices, 'teacher', 5)
-    
-    # Digging question check
-    system_prompt = teacher_digging.Digging(subject).prompt
-    prompt = ChatPromptTemplate.from_messages([
-        ('system', system_prompt),
-        ('user', "{user_message}")
-    ])
-    chain = prompt | LLM | JsonOutputParser()
-    
-    results = chain.batch([{"user_message": chunk} for chunk in learning_context])
-    digging_indices = utils.extract_True_indices(results)
-    
-    return utils.get_question_context_v2(df, digging_indices, 'teacher', 5)
-
-def analyze_student_questions(df, chunks_with_overlap, subject, LLM):
-    # Initial question check
-    question_indices = question_check(chunks_with_overlap, subject, '학생', LLM)
-    question_context = utils.get_question_context_v1(df, question_indices, 'student', 5)
-    
-    # Learning question check
-    learning_indices = learning_question_check(question_context, subject, '학생', LLM)
-    learning_context = utils.get_question_context_v2(df, learning_indices, 'student', 5)
-    
-    # Concretizing question check
-    system_prompt = student_concretizing.concretizing(subject).prompt
-    prompt = ChatPromptTemplate.from_messages([
-        ('system', system_prompt),
-        ('user', "{user_message}")
-    ])
-    chain = prompt | LLM | JsonOutputParser()
-    
-    results = chain.batch([{"user_message": chunk} for chunk in learning_context])
-    concretizing_indices = utils.extract_True_indices(results)
-    
-    return utils.get_question_context_v2(df, concretizing_indices, 'student', 5)
-
 def save_results(teacher_context, student_context, room_id):
     # Save teacher results
     with open(f"{room_id}_선생님.txt", "w", encoding="utf-8-sig") as file:
@@ -129,38 +64,121 @@ def save_results(teacher_context, student_context, room_id):
     with open(f"{room_id}_학생.txt", "w", encoding="utf-8-sig") as file:
         json.dump(student_context, file, ensure_ascii=False, indent=4)
  
-def main(subject, room_id):
 
+
+async def question_check_async(chunks_with_overlap, subject, user, LLM):
+    system_prompt = question_checker.QuestionChecker(subject=subject, user=user).prompt
+    prompt = ChatPromptTemplate.from_messages([
+        ('system', system_prompt),
+        ('user', "{user_message}")
+    ])
+    chain = prompt | LLM | StrOutputParser()
+    
+    results = await chain.abatch([{"user_message": chunk} for chunk in chunks_with_overlap])
+    return utils.extract_question_indices(results)
+
+async def learning_question_check_async(question_context, subject, user, LLM):
+    system_prompt = question_classifier.QuestionClassifier(subject=subject, user=user).prompt
+    prompt = ChatPromptTemplate.from_messages([
+        ('system', system_prompt),
+        ('user', "{user_message}")
+    ])
+    chain = prompt | LLM | JsonOutputParser()
+    
+    results = await chain.abatch([{"user_message": chunk} for chunk in question_context])
+    return utils.extract_True_indices(results)
+
+async def analyze_teacher_questions_async(df, chunks_with_overlap, subject, LLM):
+
+    # Initial question check
+    t_start = time.time()
+    question_indices = await question_check_async(chunks_with_overlap, subject, '선생님', LLM)
+    question_context = utils.get_question_context_v1(df, question_indices, 'teacher', 5)
+    t_end = time.time()
+    print(f"Teacher_question analyses in {t_end - t_start:.2f} seconds")
+    # Learning question check
+    t_start = time.time()
+    learning_indices = await learning_question_check_async(question_context, subject, '선생님', LLM)
+    learning_context = utils.get_question_context_v2(df, learning_indices, 'teacher', 5)
+    t_end = time.time()
+    print(f"Teacher_learning_question analyses in {t_end - t_start:.2f} seconds")
+    
+    # Digging question check
+    system_prompt = teacher_digging.Digging(subject).prompt
+    prompt = ChatPromptTemplate.from_messages([
+        ('system', system_prompt),
+        ('user', "{user_message}")
+    ])
+    chain = prompt | LLM | JsonOutputParser()
+    
+    results = await chain.abatch([{"user_message": chunk} for chunk in learning_context])
+    digging_indices = utils.extract_True_indices(results)
+    
+    return utils.get_question_context_v2(df, digging_indices, 'teacher', 5)
+
+async def analyze_student_questions_async(df, chunks_with_overlap, subject, LLM):
+    # Initial question check
+    t_start = time.time()
+    question_indices = await question_check_async(chunks_with_overlap, subject, '학생', LLM)
+    question_context = utils.get_question_context_v1(df, question_indices, 'student', 5)
+    t_end = time.time()
+    print(f"Student_question analyses in {t_end - t_start:.2f} seconds")
+    # Learning question check
+    t_start = time.time()
+    learning_indices = await learning_question_check_async(question_context, subject, '학생', LLM)
+    learning_context = utils.get_question_context_v2(df, learning_indices, 'student', 5)
+    t_end = time.time()
+    print(f"Student_question analyses in {t_end - t_start:.2f} seconds")
+    # Concretizing question check
+    system_prompt = student_concretizing.concretizing(subject).prompt
+    prompt = ChatPromptTemplate.from_messages([
+        ('system', system_prompt),
+        ('user', "{user_message}")
+    ])
+    chain = prompt | LLM | JsonOutputParser()
+    
+    results = await chain.abatch([{"user_message": chunk} for chunk in learning_context])
+    concretizing_indices = utils.extract_True_indices(results)
+    
+    return utils.get_question_context_v2(df, concretizing_indices, 'student', 5)
+
+async def main_async(subject, room_id):
     # Setup
     LLM = setup_llm()
     
     # Process data
     raw_data = process_raw_data(subject, room_id)
     df = create_dataframe(raw_data)
-  
-    # Process teacher data
-    t_start_teacher = time.time()
+    
+    # Prepare teacher data
     teacher_df = df[df['teacher_text'].notnull()].drop(columns=['student_text', 'student_idx', 'start', 'end', 'time'])\
         .rename(columns={"teacher_idx": "idx", "teacher_text": "text"}).reset_index(drop=True)
     teacher_chunks = utils.split_with_overlap(teacher_df, chunk_size=30, overlap=5)
-    teacher_context = analyze_teacher_questions(df, teacher_chunks, subject, LLM)
-    t_end_teacher = time.time()
-    print(f"Finished teacher analysis in {t_end_teacher - t_start_teacher:.2f} seconds")
     
-
-    # Process student data
-    t_start_student = time.time()
+    # Prepare student data
     student_df = df[df['student_text'].notnull()].drop(columns=['teacher_text', 'teacher_idx', 'start', 'end', 'time'])\
         .rename(columns={"student_idx": "idx", "student_text": "text"}).reset_index(drop=True)
     student_chunks = utils.split_with_overlap(student_df, chunk_size=30, overlap=5)
-    student_context = analyze_student_questions(df, student_chunks, subject, LLM)
-    t_end_student = time.time()
-    print(f"Finished student analysis in {t_end_student - t_start_student:.2f} seconds")
+    
+    # Start timing
+    t_start = time.time()
+    
+    # Run analyses concurrently
+    teacher_context, student_context = await asyncio.gather(
+        analyze_teacher_questions_async(df, teacher_chunks, subject, LLM),
+        analyze_student_questions_async(df, student_chunks, subject, LLM)
+    )
+    
+    t_end = time.time()
+    print(f"Finished all analyses in {t_end - t_start:.2f} seconds")
     
     # Save results
     save_results(teacher_context, student_context, room_id)
-
+    
 if __name__ == "__main__":
     subject = "수학"  # Example subject
-    room_id = "67514d9c4c8ca68c745c1fdf"  # Example room_id
-    main(subject, room_id)
+    room_id = "674e58163925f28f6caf4fa0"  # Example room_id
+    asyncio.run(main_async(subject, room_id))
+    
+    
+    
